@@ -31,7 +31,7 @@ MODEL = "mistral-large-latest"
 # Origines autorisees a appeler ce relais.
 # En PRODUCTION, remplacez "*" par l'URL exacte de votre Moodle,
 # ex : ["https://moodle.mon-etablissement.fr"]
-ALLOWED_ORIGINS = ["*"]
+ALLOWED_ORIGINS = ["https://moodle.utt.fr"]
 
 # ---------------------------------------------------------------------------
 # Application
