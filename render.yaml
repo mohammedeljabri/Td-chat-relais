@@ -1,0 +1,16 @@
+# Blueprint Render — déploiement du relais du chat
+# À placer à la racine du dépôt, à côté de relay.py et requirements.txt.
+# Render → New → Blueprint → sélectionner le dépôt : tout est pré-rempli.
+# Il ne reste qu'à saisir la valeur de LLM_API_KEY (secret, non stocké dans le dépôt).
+
+services:
+  - type: web
+    name: td-chat-relais
+    runtime: python
+    region: frankfurt          # le plus proche de la France (sinon: oregon, ohio, singapore…)
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn relay:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: LLM_API_KEY
+        sync: false            # = secret à saisir dans le tableau de bord, jamais dans le dépôt
