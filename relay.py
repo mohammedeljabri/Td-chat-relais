@@ -35,9 +35,8 @@ TEMPERATURE = 0.2      # bas = consignes mieux respectees
 MAX_TOKENS = 700
 
 # En PRODUCTION, mettre l'URL exacte de votre Moodle, ex :
-# ALLOWED_ORIGINS = ["https://moodle.utt.fr"]
-ALLOWED_ORIGINS = ["*"]
-# https://moodle.utt.fr
+ALLOWED_ORIGINS = ["https://moodle.utt.fr"]
+# ALLOWED_ORIGINS = ["*"]
 
 # ---------------------------------------------------------------------------
 # Consigne pedagogique — AUTORITE DU SERVEUR (l'etudiant ne peut pas la changer)
