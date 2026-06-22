@@ -1,11 +1,13 @@
 """
-Relais du chat du TD (Moodle) — version 2.
+Relais du chat du TD (Moodle) — version 3.
 
-La cle API ET la consigne pedagogique vivent ICI, cote serveur.
-Le navigateur de l'etudiant n'envoie que :
-  - le contexte de l'exercice (donnee non sensible),
-  - les messages de l'etudiant (et les reponses precedentes).
-Le relais impose lui-meme le system prompt : l'etudiant ne peut donc pas le modifier.
+Nouveautes par rapport a la v2 :
+- REESSAIS automatiques (jusqu'a 3) en cas de timeout / erreur reseau passagere
+  ou de reponse 429/5xx du fournisseur -> absorbe les "ca marche par moments".
+- timeout porte a 90 s.
+- message d'erreur explicite (type d'exception) pour diagnostiquer si besoin.
+
+La cle API et la consigne pedagogique restent cote serveur.
 
 Lancer en local :
     pip install -r requirements.txt
@@ -14,6 +16,7 @@ Lancer en local :
 """
 
 import os
+import asyncio
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,16 +30,21 @@ API_KEY = os.environ.get("LLM_API_KEY", "")
 # Fournisseur actif : Mistral
 PROVIDER_URL = "https://api.mistral.ai/v1/chat/completions"
 MODEL = "mistral-large-latest"
-# Pour Groq, commenter les 2 lignes ci-dessus et decommenter :
+# Pour reduire encore les timeouts (plus rapide, un peu moins discipline) :
+# MODEL = "mistral-medium-latest"   # bon compromis vitesse / fermete
+# MODEL = "mistral-small-latest"    # le plus rapide
+# Pour Groq :
 # PROVIDER_URL = "https://api.groq.com/openai/v1/chat/completions"
 # MODEL = "llama-3.3-70b-versatile"
 
-TEMPERATURE = 0.2      # bas = consignes mieux respectees
+TEMPERATURE = 0.2
 MAX_TOKENS = 700
+TIMEOUT = 90          # secondes
+MAX_RETRIES = 3       # nombre total de tentatives vers le fournisseur
 
 # En PRODUCTION, mettre l'URL exacte de votre Moodle, ex :
-ALLOWED_ORIGINS = ["https://moodle.utt.fr"]
-# ALLOWED_ORIGINS = ["*"]
+# ALLOWED_ORIGINS = ["https://moodle.mon-etablissement.fr"]
+ALLOWED_ORIGINS = ["*"]
 
 # ---------------------------------------------------------------------------
 # Consigne pedagogique — AUTORITE DU SERVEUR (l'etudiant ne peut pas la changer)
@@ -83,11 +91,11 @@ app.add_middleware(
 
 
 class ChatIn(BaseModel):
-    context: str = ""      # enonce de l'exercice (fourni par la page)
-    messages: list = []    # historique : seuls les tours user / assistant
+    context: str = ""
+    messages: list = []
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def health():
     return {"status": "ok", "model": MODEL}
 
@@ -97,7 +105,6 @@ async def chat(body: ChatIn):
     if not API_KEY:
         raise HTTPException(500, "Cle API non configuree (variable LLM_API_KEY).")
 
-    # Le system prompt est impose par le serveur ; le contexte est traite comme une donnee.
     system_content = SYSTEM_PROMPT
     if body.context.strip():
         system_content += (
@@ -105,18 +112,15 @@ async def chat(body: ChatIn):
             + body.context.strip()
         )
 
-    # On ne garde QUE les tours user / assistant venant de la page (aucun system injecte).
     clean = [
         {"role": m["role"], "content": str(m["content"])}
         for m in body.messages
         if isinstance(m, dict) and m.get("role") in ("user", "assistant") and m.get("content")
     ]
 
-    final_messages = [{"role": "system", "content": system_content}] + clean
-
     payload = {
         "model": MODEL,
-        "messages": final_messages,
+        "messages": [{"role": "system", "content": system_content}] + clean,
         "temperature": TEMPERATURE,
         "max_tokens": MAX_TOKENS,
     }
@@ -125,19 +129,31 @@ async def chat(body: ChatIn):
         "Content-Type": "application/json",
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            r = await client.post(PROVIDER_URL, json=payload, headers=headers)
-    except httpx.RequestError as e:
-        raise HTTPException(502, f"Fournisseur injoignable : {e}")
+    last_err = "inconnue"
+    for attempt in range(MAX_RETRIES):
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+                r = await client.post(PROVIDER_URL, json=payload, headers=headers)
+        except httpx.RequestError as e:
+            # erreur reseau / timeout : on reessaie
+            last_err = f"{type(e).__name__}: {e}"
+            await asyncio.sleep(1.5 * (attempt + 1))
+            continue
 
-    if r.status_code != 200:
+        if r.status_code == 200:
+            data = r.json()
+            try:
+                return {"reply": data["choices"][0]["message"]["content"]}
+            except (KeyError, IndexError):
+                raise HTTPException(502, "Reponse du fournisseur inattendue.")
+
+        # surcharge / erreur serveur passagere du fournisseur : on reessaie
+        if r.status_code in (429, 500, 502, 503, 504):
+            last_err = f"HTTP {r.status_code}: {r.text[:150]}"
+            await asyncio.sleep(1.5 * (attempt + 1))
+            continue
+
+        # autre erreur (cle invalide, requete malformee...) : inutile de reessayer
         raise HTTPException(r.status_code, r.text[:300])
 
-    data = r.json()
-    try:
-        content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError):
-        raise HTTPException(502, "Reponse du fournisseur inattendue.")
-
-    return {"reply": content}
+    raise HTTPException(502, f"Fournisseur injoignable apres {MAX_RETRIES} tentatives ({last_err}).")
