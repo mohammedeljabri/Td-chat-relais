@@ -36,7 +36,7 @@ MAX_TOKENS = 700
 
 # En PRODUCTION, mettre l'URL exacte de votre Moodle, ex :
 # ALLOWED_ORIGINS = ["https://moodle.mon-etablissement.fr"]
-ALLOWED_ORIGINS = ["https://moodle.utt.fr/"]
+ALLOWED_ORIGINS = ["https://moodle.utt.fr"]
 
 # ---------------------------------------------------------------------------
 # Consigne pedagogique — AUTORITE DU SERVEUR (l'etudiant ne peut pas la changer)
