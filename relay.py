@@ -43,8 +43,8 @@ TIMEOUT = 90          # secondes
 MAX_RETRIES = 3       # nombre total de tentatives vers le fournisseur
 
 # En PRODUCTION, mettre l'URL exacte de votre Moodle, ex :
-# ALLOWED_ORIGINS = ["https://moodle.mon-etablissement.fr"]
-ALLOWED_ORIGINS = ["*"]
+ALLOWED_ORIGINS = ["https://moodle.utt.fr"]
+# ALLOWED_ORIGINS = ["*"]
 
 # ---------------------------------------------------------------------------
 # Consigne pedagogique — AUTORITE DU SERVEUR (l'etudiant ne peut pas la changer)
